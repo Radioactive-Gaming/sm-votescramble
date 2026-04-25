@@ -1,7 +1,7 @@
 #pragma semicolon 1
 
 #include <sourcemod>
-#include <morecolors>
+#include <multicolors>
 
 #define PLUGIN_VERSION		"1.2.0"
 
@@ -20,11 +20,7 @@ new bool:votedToScramble[MAXPLAYERS + 1];
 new bool:scrambleTeams = false;
 
 new Handle:mp_bonusroundtime;
-
-#define UPDATE_FILE		"votescramble.txt"
 #define CONVAR_PREFIX	"better_votescramble"
-
-#include "mckayupdater.sp"
 
 public OnPluginStart() {
 	cvarPercentage = CreateConVar("better_votescramble_percentage", "0.6", "Percentage required to initiate a team scramble");
@@ -156,7 +152,7 @@ public Handler_CastVote(Handle:menu, MenuAction:action, param1, param2) {
 		GetMenuVoteInfo(param2, votes, totalVotes);
 		GetMenuItem(menu, param1, item, sizeof(item));
 		
-		percent = FloatDiv(float(votes),float(totalVotes));
+		percent = (float(votes)/float(totalVotes));
 		limit = GetConVarFloat(cvarPercentage);
 		
 		if(FloatCompare(percent, limit) >= 0 && StrEqual(item, "yes")) {
