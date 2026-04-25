@@ -1,28 +1,54 @@
+/**
+ * votescramble.sp
+ * License: GNU General Public License v3.0
+ */
 #pragma semicolon 1
+#pragma newdecls required
 
 #include <sourcemod>
 #include <multicolors>
 
-#define PLUGIN_VERSION		"1.3.0"
+////////////////////////////////////////////////////////////////////////////////
+//
+// VARIABLES
+//
+////////////////////////////////////////////////////////////////////////////////
 
-public Plugin:myinfo = {
-    name		= "[TF2] Better Vote Scramble",
-    author		= "Dr. McKay",
-    description	= "A vote scramble system that uses TF2's built-in scrambler when the next round begins",
+#define     PLUGIN_AUTHOR       "Dr. McKay, X8ETr1x"
+#define     PLUGIN_DESC         "A vote scramble system that uses TF2's built-in scrambler when the next round begins."
+#define     PLUGIN_NAME         "Better Vote Scramble"
+#define     PLUGIN_URL          "https://github.com/Radioactive-Gaming/sm-votescramble"
+#define     PLUGIN_VERSION      "1.4.0"
+
+// CVar handles, defined in OnPluginStart().
+Handle      cvarPercentage;
+Handle      cvarVotesRequired;
+Handle      mp_bonusroundtime;
+
+bool votedToScramble[MAXPLAYERS + 1];
+bool scrambleTeams;
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// ENUMS
+//
+////////////////////////////////////////////////////////////////////////////////
+
+public Plugin myinfo = {
+    name		= PLUGIN_NAME,
+    author		= PLUGIN_AUTHOR,
+    description	= PLUGIN_DESC,
     version		= PLUGIN_VERSION,
-    url			= "http://www.doctormckay.com"
+    url			= PLUGIN_URL
 }
 
-new Handle:cvarPercentage;
-new Handle:cvarVotesRequired;
+////////////////////////////////////////////////////////////////////////////////
+//
+// MAIN
+//
+////////////////////////////////////////////////////////////////////////////////
 
-new bool:votedToScramble[MAXPLAYERS + 1];
-new bool:scrambleTeams = false;
-
-new Handle:mp_bonusroundtime;
-#define CONVAR_PREFIX	"better_votescramble"
-
-public OnPluginStart() {
+public void OnPluginStart() {
 	cvarPercentage = CreateConVar("better_votescramble_percentage", "0.6", "Percentage required to initiate a team scramble");
 	cvarVotesRequired = CreateConVar("better_votescramble_votes_required", "3", "Votes required to initiate a vote");
 	
@@ -38,12 +64,58 @@ public OnPluginStart() {
 	LoadTranslations("core.phrases");
 }
 
-public OnClientConnected(client) {
+public void OnClientConnected(int client) {
 	votedToScramble[client] = false;
 }
 
-public Action:Command_Say(client, const String:command[], argc) {
-	decl String:message[256];
+public void Handler_CastVote(Handle menu, MenuAction action, int param1, int param2) {
+	if(action == MenuAction_End) {
+		CloseHandle(menu);
+	} else if(action == MenuAction_VoteCancel && param1 == VoteCancel_NoVotes) {
+		PrintToChatAll("\x04[SM] \x01Team scramble vote failed: no votes were cast.");
+	} else if(action == MenuAction_VoteEnd) {
+		char item[64];
+		float percent;
+        float limit;
+        int votes;
+        int totalVotes;
+
+		GetMenuVoteInfo(param2, votes, totalVotes);
+		GetMenuItem(menu, param1, item, sizeof(item));
+
+		percent = (float(votes)/float(totalVotes));
+		limit = GetConVarFloat(cvarPercentage);
+
+		if(FloatCompare(percent, limit) >= 0 && StrEqual(item, "yes")) {
+			PrintToChatAll("\x04[SM] \x01The vote was successful. Teams will be scrambled at the start of the next round.");
+			scrambleTeams = true;
+		} else {
+			PrintToChatAll("\x04[SM] \x01The vote failed.");
+		}
+	}
+}
+
+public void Event_RoundEnd(Handle event, const char[] name, bool dontBroadcast) {
+	if(scrambleTeams) {
+		float delay = GetConVarFloat(mp_bonusroundtime) - 7.0;
+		if(delay < 0.0) {
+			delay = 0.0;
+		}
+
+		scrambleTeams = false;
+		CreateTimer(delay, Timer_Scramble);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// ACTIONS
+//
+////////////////////////////////////////////////////////////////////////////////
+
+public Action Command_Say(int client, const char[] command, int argc) {
+	char message[256];
+
 	GetCmdArgString(message, sizeof(message));
 	StripQuotes(message);
 	TrimString(message);
@@ -74,53 +146,77 @@ public Action:Command_Say(client, const String:command[], argc) {
 	return Plugin_Continue;
 }
 
-PrintToChatDelay(client, const String:format[], any:...) {
-	decl String:buffer[512];
+public Action Timer_PrintToChat(Handle timer, any pack) {
+	char message[512];
+
+    ResetPack(pack);
+	int client = GetClientOfUserId(ReadPackCell(pack));
+	if(client == 0) {
+		CloseHandle(pack);
+	}
+	else {
+        ReadPackString(pack, message, sizeof(message));
+        CloseHandle(pack);
+        PrintToChat(client, message);
+    }
+
+    return Plugin_Handled;
+
+}
+
+public Action Timer_PrintToChatAll(Handle timer, any pack) {
+    char message[512];
+
+    ResetPack(pack);
+	int client = GetClientOfUserId(ReadPackCell(pack));
+	if(client == 0) {
+		CloseHandle(pack);
+	}
+	else {
+        ReadPackString(pack, message, sizeof(message));
+        CloseHandle(pack);
+        CPrintToChatAllEx(client, message);
+    }
+
+    return Plugin_Handled;
+}
+
+public Action Timer_Scramble(Handle timer) {
+	ServerCommand("mp_scrambleteams 2");
+	PrintToChatAll("\x04[SM] \x01Scrambling the teams due to vote.");
+
+    return Plugin_Handled;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// LOCAL FUNCTIONS
+//
+////////////////////////////////////////////////////////////////////////////////
+
+void PrintToChatDelay(int client, const char[] format, any ...) {
+	char buffer[512];
+    Handle pack = CreateDataPack();
+
 	VFormat(buffer, sizeof(buffer), format, 3);
-	new Handle:pack = CreateDataPack();
 	WritePackCell(pack, GetClientUserId(client));
 	WritePackString(pack, buffer);
 	CreateTimer(0.0, Timer_PrintToChat, pack);
 }
 
-PrintToChatAllDelay(client, const String:format[], any:...) {
-	decl String:buffer[512];
-	VFormat(buffer, sizeof(buffer), format, 3);
-	new Handle:pack = CreateDataPack();
+void PrintToChatAllDelay(int client, const char[] format, any ...) {
+	char buffer[512];
+	Handle pack = CreateDataPack();
+
+    VFormat(buffer, sizeof(buffer), format, 3);
 	WritePackCell(pack, GetClientUserId(client));
 	WritePackString(pack, buffer);
 	CreateTimer(0.0, Timer_PrintToChatAll, pack);
 }
 
-public Action:Timer_PrintToChat(Handle:timer, any:pack) {
-	ResetPack(pack);
-	new client = GetClientOfUserId(ReadPackCell(pack));
-	if(client == 0) {
-		CloseHandle(pack);
-		return;
-	}
-	decl String:message[512];
-	ReadPackString(pack, message, sizeof(message));
-	CloseHandle(pack);
-	PrintToChat(client, message);
-}
-
-public Action:Timer_PrintToChatAll(Handle:timer, any:pack) {
-	ResetPack(pack);
-	new client = GetClientOfUserId(ReadPackCell(pack));
-	if(client == 0) {
-		CloseHandle(pack);
-		return;
-	}
-	decl String:message[512];
-	ReadPackString(pack, message, sizeof(message));
-	CloseHandle(pack);
-	CPrintToChatAllEx(client, message);
-}
-
-GetTotalVotes() {
-	new total = 0;
-	for(new i = 1; i <= MaxClients; i++) {
+int GetTotalVotes() {
+	int total = 0;
+	for(int i = 1; i <= MaxClients; i++) {
 		if(IsClientInGame(i) && !IsFakeClient(i) && votedToScramble[i]) {
 			total++;
 		}
@@ -128,55 +224,14 @@ GetTotalVotes() {
 	return total;
 }
 
-InitiateVote() {
-	for(new i = 1; i <= MaxClients; i++) {
+void InitiateVote() {
+	for(int i = 1; i <= MaxClients; i++) {
 		votedToScramble[i] = false;
 	}
-	new Handle:menu = CreateMenu(Handler_CastVote);
+    Handle menu = CreateMenu(Handler_CastVote);
 	SetMenuTitle(menu, "Scramble teams at the end of the round?");
 	AddMenuItem(menu, "yes", "Yes");
 	AddMenuItem(menu, "no", "No");
 	SetMenuExitButton(menu, false);
 	VoteMenuToAll(menu, 20);
-}
-
-public Handler_CastVote(Handle:menu, MenuAction:action, param1, param2) {
-	if(action == MenuAction_End) {
-		CloseHandle(menu);
-	} else if(action == MenuAction_VoteCancel && param1 == VoteCancel_NoVotes) {
-		PrintToChatAll("\x04[SM] \x01Team scramble vote failed: no votes were cast.");
-	} else if(action == MenuAction_VoteEnd) {
-		decl String:item[64];
-		new Float:percent, Float:limit, votes, totalVotes;
-
-		GetMenuVoteInfo(param2, votes, totalVotes);
-		GetMenuItem(menu, param1, item, sizeof(item));
-		
-		percent = (float(votes)/float(totalVotes));
-		limit = GetConVarFloat(cvarPercentage);
-		
-		if(FloatCompare(percent, limit) >= 0 && StrEqual(item, "yes")) {
-			PrintToChatAll("\x04[SM] \x01The vote was successful. Teams will be scrambled at the start of the next round.");
-			scrambleTeams = true;
-		} else {
-			PrintToChatAll("\x04[SM] \x01The vote failed.");
-		}
-	}
-}
-
-public Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast) {
-	if(scrambleTeams) {
-		new Float:delay = GetConVarFloat(mp_bonusroundtime) - 7.0;
-		if(delay < 0.0) {
-			delay = 0.0;
-		}
-		
-		scrambleTeams = false;
-		CreateTimer(delay, Timer_Scramble);
-	}
-}
-
-public Action:Timer_Scramble(Handle:timer) {
-	ServerCommand("mp_scrambleteams 2");
-	PrintToChatAll("\x04[SM] \x01Scrambling the teams due to vote.");
 }
