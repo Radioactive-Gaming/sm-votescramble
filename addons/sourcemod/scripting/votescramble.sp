@@ -18,7 +18,7 @@
 #define     PLUGIN_DESC         "A vote scramble system that uses TF2's built-in scrambler when the next round begins."
 #define     PLUGIN_NAME         "Better Vote Scramble"
 #define     PLUGIN_URL          "https://github.com/Radioactive-Gaming/sm-votescramble"
-#define     PLUGIN_VERSION      "1.5.0"
+#define     PLUGIN_VERSION      "1.5.1"
 
 // CVar handles, defined in OnPluginStart().
 Handle      cvarPercentage;
@@ -70,7 +70,7 @@ public void OnPluginStart() {
 
     // Execute the configuration
     AutoExecConfig(true);
-	LogMessage("[INFO] Plugin loaded.");
+    LogMessage("[INFO] Plugin loaded.");
 
 }
 
@@ -231,9 +231,11 @@ public Action Command_Say(int client, const char[] command, int argc) {
 
                     if (voteInProgress) {
 
-                        PrintToChatDelay(client, "\x04[SM] \x01 Vote submitted. Please wait for the current vote to end.");
+                        PrintToChatDelay(client, "\x04[SM] \x01 A server vote is currently in progress. Try again once the vote is completed.");
 
                     } else {
+
+                        votedToScramble[client] = true;
 
                         int totalVotes = GetTotalVotes();
                         int votesRequired = GetConVarInt(cvarVotesRequired);
@@ -248,8 +250,6 @@ public Action Command_Say(int client, const char[] command, int argc) {
                         }
 
                     }
-
-                    votedToScramble[client] = true;
 
                     return Plugin_Continue;
 
