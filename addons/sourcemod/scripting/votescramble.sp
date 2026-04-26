@@ -68,7 +68,9 @@ public void OnPluginStart() {
     // SourceMod core phrases used for responding to vote results.
     LoadTranslations("core.phrases");
 
-    LogMessage("[INFO] Plugin loaded.");
+    // Execute the configuration
+    AutoExecConfig(true);
+	LogMessage("[INFO] Plugin loaded.");
 
 }
 
