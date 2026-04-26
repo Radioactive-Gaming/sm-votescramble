@@ -1,3 +1,9 @@
+## [1.5.1] 2026-04-26
+
+### Fixed
+
+- A logic issue with tracking the vote count.
+
 ## [1.5.0] 2026-04-26
 
 ### Added
